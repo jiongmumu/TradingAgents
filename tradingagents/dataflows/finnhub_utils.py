@@ -1,3 +1,10 @@
+"""
+Finnhub Data Utilities Module.
+
+https://finnhub.io/docs/api/
+
+"""
+
 import json
 import os
 
@@ -89,6 +96,10 @@ def get_company_profile(symbol):
     '''
     finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
     return finnhub_client.company_profile2(symbol=symbol)
+
+def get_sec_filing(symbol):
+    finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+    return finnhub_client.filings(symbol=symbol, _from="2025-01-01", to="2025-0726")
 
 
 if __name__ == "__main__":
