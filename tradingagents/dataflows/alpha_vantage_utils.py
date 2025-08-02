@@ -15,6 +15,46 @@ import json
 # Load environment variables from .env file
 load_dotenv()
 
+def _generate_backward_quarters(from_year:int):
+    '''Generate from current year & quarter to Q1 of the given year.
+    '''
+    quarters = ['2025Q2', '2025Q1']
+    year= 2024
+    while year >= from_year:
+        quarters.append(f'{year}Q4')
+        quarters.append(f'{year}Q3')
+        quarters.append(f'{year}Q2')
+        quarters.append(f'{year}Q1')
+        year = year-1
+    return quarters
+
+def _earnings_to_markdown(earnings):
+    '''convert earnings from alpha vantage to markdown.Extension
+
+    Earnings will have the following data:
+    - quarter
+    - symbol
+    - list of transcripts:
+      - speaker
+      - content
+      - sentiment 
+    '''
+    md_output = f"### 📄 **{earnings['symbol']} {earnings['quarter']} Earnings Conference Call**\n\n"
+    for entry in earnings['transcript']:
+        speaker = entry.get("speaker", "Unknown")
+        sentiment = entry.get("sentiment", None)
+        content = entry.get("content", "")
+        
+        # Optional: include sentiment if available
+        if sentiment is not None:
+            md_output += f"👤 **{speaker}** _(Sentiment: {sentiment})_\n"
+        else:
+            md_output += f"👤 **{speaker}**\n"
+
+        md_output += f"> {content.strip()}\n\n"
+    
+    return md_output
+
 class AlphaVantageClient():
     def __init__(self):
         # Get API key from environment
@@ -58,31 +98,15 @@ class AlphaVantageClient():
             previous_date =date
         return df
 
+    def get_earnings_from(self, symbol: str, from_year:int):
+        quarters = _generate_backward_quarters(from_year)
+        transcripts = []
+        markdown_transcript = ''
+        for quarter in quarters:
+            earnings = self.get_earnings_call(symbol, quarter)
+            if len(earnings['transcript']) > 0:
+                markdown_transcript+= _earnings_to_markdown(earnings)
+                transcripts.append(json.dumps(earnings))
+        return transcripts, markdown_transcript
 
-def earnings_to_markdown(earnings):
-    '''convert earnings from alpha vantage to markdown.Extension
-
-    Earnings will have the following data:
-    - quarter
-    - symbol
-    - list of transcripts:
-      - speaker
-      - content
-      - sentiment 
-    '''
-    md_output = f"### 📄 **{earnings['symbol']} {earnings['quarter']} Earnings Conference Call**\n\n"
-    for entry in earnings['transcript']:
-        speaker = entry.get("speaker", "Unknown")
-        sentiment = entry.get("sentiment", None)
-        content = entry.get("content", "")
-        
-        # Optional: include sentiment if available
-        if sentiment is not None:
-            md_output += f"👤 **{speaker}** _(Sentiment: {sentiment})_\n"
-        else:
-            md_output += f"👤 **{speaker}**\n"
-
-        md_output += f"> {content.strip()}\n\n"
-    
-    return md_output
 

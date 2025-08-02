@@ -133,11 +133,14 @@ def get_earnings_and_profiles(earning_release_date: str, hour: Literal["amc", "b
     df_earnings = df_earnings.sort_values(by='revenueActual', ascending=False).head(stock_limit)
     company_profiles = {}
 
-    for index, row in df_earnings.iterrows():
-        company_profiles[row['symbol']] = get_company_profile(row['symbol'])
+    for _, row in df_earnings.iterrows():
+        try:
+            company_profiles[row['symbol']] = get_company_profile(row['symbol'])
+        except Exception as e:
+            print(e)
+
     # Dictionary with keys as rows (default)
     df_company_profiles = pd.DataFrame(company_profiles).T
-    dfep = df_earnings.merge(df_company_profiles, left_on='symbol', right_on='ticker', how='inner')
     if hour == 'amc':
         # next day
         before_earning_date = earning_release_date
@@ -146,13 +149,17 @@ def get_earnings_and_profiles(earning_release_date: str, hour: Literal["amc", "b
         # the same day
         before_earning_date = previous_open_market_day(earning_release_date)
         after_earning_date = earning_release_date
-    stock_data = yf.download(dfep.symbol.tolist(), period='1y').stack(level=1).reset_index()
-    df_ep_p = stock_data.query(f'Date == "{before_earning_date}"').merge(stock_data.query(f'Date == "{after_earning_date}"'), on = 'Ticker', suffixes=['', '_1'] ).merge(dfep, left_on = 'Ticker', right_on='symbol')
+    stock_data = yf.download(df_earnings.symbol.tolist(), period='1y').stack(level=1).reset_index()
+    df_ep_p = stock_data.query(f'Date == "{before_earning_date}"').merge(stock_data.query(f'Date == "{after_earning_date}"'), on = 'Ticker', suffixes=['', '_1'] ).merge(df_earnings, left_on = 'Ticker', right_on='symbol')
     df_ep_p['change_after_earning'] = (df_ep_p['Open_1']- df_ep_p['Close'])/df_ep_p['Close']
-    return df_ep_p
+    df_ep_p['change_after_earning_cc'] = (df_ep_p['Close_1']- df_ep_p['Close'])/df_ep_p['Close']
+    df_prices_profile = df_ep_p[['date', 'symbol', 'change_after_earning','change_after_earning_cc',
+                                 'epsActual', 'epsEstimate','eps_diff_percent', 
+                                 'revenueActual', 'revenueEstimate', 'revenue_diff_percent']].merge(df_company_profiles, left_on='symbol', right_on='ticker', how='inner')
+    return df_prices_profile.query(f'date == "{earning_release_date}"').sort_values('marketCapitalization', ascending=False)
 
 
-def get_company_profile(symbol):
+def get_company_profile(symbol, use_finnhub_for_profile = False):
     '''
     Get company profile from Finnhub API.
     https://finnhub.io/api/v1/stock/profile2?symbol=AAPL&token=coaovg1r01qro9kpf6c0coaovg1r01qro9kpf6cg
@@ -160,8 +167,20 @@ def get_company_profile(symbol):
     No eps, has marketCapitalization, no other statistics. 
 
     '''
-    finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
-    return finnhub_client.company_profile2(symbol=symbol)
+    if use_finnhub_for_profile:
+        finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
+        return finnhub_client.company_profile2(symbol=symbol)
+    else:
+        info = yf.Ticker(symbol).info
+        data =  {k: pd.to_numeric(info[k], errors='coerce') for k in ['beta', 'revenuePerShare', 'revenueGrowth',
+                                      'priceToSalesTrailing12Months' , 'priceToBook','priceEpsCurrentYear',
+                                     'fiftyDayAverage','profitMargins','trailingEps','forwardEps','totalRevenue'] if k in info}
+        data['ticker'] = symbol
+        # so it has the same key as from finnhub, so it can be sorted based on this key.
+        data['marketCapitalization'] = float(info['marketCap'])
+        data['shortName'] = info['shortName']
+        data['industry']= info['industry']
+        return data
 
 def get_sec_filing(symbol):
     finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)
