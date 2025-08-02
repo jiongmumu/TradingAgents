@@ -1,12 +1,13 @@
 # gets data/stats
 
-import yfinance as yf
-from typing import Annotated, Callable, Any, Optional
-from pandas import DataFrame
-import pandas as pd
 from functools import wraps
+from typing import Annotated, Any, Callable, Optional
 
-from .utils import save_output, SavePathType, decorate_all_methods
+import pandas as pd
+import yfinance as yf
+from pandas import DataFrame
+
+from .utils import SavePathType, decorate_all_methods, save_output
 
 
 def init_ticker(func: Callable) -> Callable:
