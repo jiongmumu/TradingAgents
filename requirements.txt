@@ -1,5 +1,6 @@
 typing-extensions
 langchain-openai
+langchain-google-genai
 langchain-experimental
 pandas
 yfinance

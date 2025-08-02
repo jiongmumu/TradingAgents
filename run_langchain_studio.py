@@ -82,7 +82,7 @@ def run_trading_agents_with_tracing():
         print("💡 Check https://smith.langchain.com for the trace")
         
         # Run the graph with a test company
-        final_state, decision = ta.propagate("AAPL", "2024-01-15")
+        final_state, decision = ta.propagate("AAPL", "2025-07-28")
         
         print(f"\n🎯 Final decision: {decision}")
         print("✅ Execution completed! Check LangSmith for detailed traces.")

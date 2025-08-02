@@ -13,6 +13,12 @@ import pandas as pd
 import requests
 from dotenv import load_dotenv
 from tabulate import tabulate
+from typing import Literal
+import yfinance as yf
+from datetime import datetime, timedelta
+
+import pandas_market_calendars as mcal
+
 
 import finnhub
 
@@ -59,7 +65,7 @@ BASE_URL = 'https://finnhub.io/api/v1/calendar/earnings'
 
 
 
-def get_earnings_calendar(start_date, end_date):
+def get_earnings_calendar(start_date: str, end_date: str):
     '''
     Get earnings calendar from Finnhub API.
     https://finnhub.io/api/v1/calendar/earnings?from=2025-07-01&to=2025-07-30&token=coaovg1r01qro9kpf6c0coaovg1r01qro9kpf6cg
@@ -88,10 +94,70 @@ def get_earnings_calendar(start_date, end_date):
     else:
         print(f"Error {response.status_code}: {response.text}")
 
+
+def previous_open_market_day(date_str: str) -> str:
+    nyse = mcal.get_calendar('NYSE')
+    date = datetime.strptime(date_str, '%Y-%m-%d')
+    
+    # Get the previous 10 business days including the target day
+    schedule = nyse.schedule(start_date=(date - timedelta(days=15)).strftime('%Y-%m-%d'),
+                             end_date=date.strftime('%Y-%m-%d'))
+    
+    # Find all market open days before the given date
+    open_days = schedule.index[schedule.index < date].sort_values()
+    
+    if not open_days.empty:
+        return open_days[-1].strftime('%Y-%m-%d')
+    else:
+        raise ValueError("No previous open market day found")
+
+
+def next_open_market_day(date_str: str) -> str:
+    nyse = mcal.get_calendar('NYSE')
+    date = datetime.strptime(date_str, '%Y-%m-%d')
+    
+    # Get the previous 10 business days including the target day
+    schedule = nyse.schedule(start_date=date,
+                             end_date=(date + timedelta(days=15)).strftime('%Y-%m-%d'))
+    
+    # Find all market open days before the given date
+    open_days = schedule.index[schedule.index > date].sort_values()
+    
+    if not open_days.empty:
+        return open_days[0].strftime('%Y-%m-%d')
+    else:
+        raise ValueError("No next open market day found")
+
+def get_earnings_and_profiles(earning_release_date: str, hour: Literal["amc", "bmo"], stock_limit = 50):
+    df_earnings = get_earnings_calendar(earning_release_date, earning_release_date)
+    df_earnings = df_earnings.sort_values(by='revenueActual', ascending=False).head(stock_limit)
+    company_profiles = {}
+
+    for index, row in df_earnings.iterrows():
+        company_profiles[row['symbol']] = get_company_profile(row['symbol'])
+    # Dictionary with keys as rows (default)
+    df_company_profiles = pd.DataFrame(company_profiles).T
+    dfep = df_earnings.merge(df_company_profiles, left_on='symbol', right_on='ticker', how='inner')
+    if hour == 'amc':
+        # next day
+        before_earning_date = earning_release_date
+        after_earning_date = next_open_market_day(earning_release_date)
+    elif hour == 'bmo':
+        # the same day
+        before_earning_date = previous_open_market_day(earning_release_date)
+        after_earning_date = earning_release_date
+    stock_data = yf.download(dfep.symbol.tolist(), period='1y').stack(level=1).reset_index()
+    df_ep_p = stock_data.query(f'Date == "{before_earning_date}"').merge(stock_data.query(f'Date == "{after_earning_date}"'), on = 'Ticker', suffixes=['', '_1'] ).merge(dfep, left_on = 'Ticker', right_on='symbol')
+    df_ep_p['change_after_earning'] = (df_ep_p['Open_1']- df_ep_p['Close'])/df_ep_p['Close']
+    return df_ep_p
+
+
 def get_company_profile(symbol):
     '''
     Get company profile from Finnhub API.
     https://finnhub.io/api/v1/stock/profile2?symbol=AAPL&token=coaovg1r01qro9kpf6c0coaovg1r01qro9kpf6cg
+
+    No eps, has marketCapitalization, no other statistics. 
 
     '''
     finnhub_client = finnhub.Client(api_key=FINNHUB_API_KEY)

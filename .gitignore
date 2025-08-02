@@ -10,3 +10,4 @@ eval_data/
 *.png
 output.txt
 *.db-journal
+*.pdf

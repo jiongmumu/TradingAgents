@@ -45,7 +45,7 @@ class AlphaVantageClient():
 
         df should have index which is date.
         '''
-        qe = pd.DataFrame(self.get_earnings('META')['quarterlyEarnings']).set_index('reportedDate')
+        qe = pd.DataFrame(self.get_earnings(symbol)['quarterlyEarnings']).set_index('reportedDate')
 
         # shift so latest reported date has value
         eps_rolling = qe['reportedEPS'].rolling(window=4).sum().shift(-3)
@@ -59,4 +59,30 @@ class AlphaVantageClient():
         return df
 
 
+def earnings_to_markdown(earnings):
+    '''convert earnings from alpha vantage to markdown.Extension
+
+    Earnings will have the following data:
+    - quarter
+    - symbol
+    - list of transcripts:
+      - speaker
+      - content
+      - sentiment 
+    '''
+    md_output = f"### 📄 **{earnings['symbol']} {earnings['quarter']} Earnings Conference Call**\n\n"
+    for entry in earnings['transcript']:
+        speaker = entry.get("speaker", "Unknown")
+        sentiment = entry.get("sentiment", None)
+        content = entry.get("content", "")
+        
+        # Optional: include sentiment if available
+        if sentiment is not None:
+            md_output += f"👤 **{speaker}** _(Sentiment: {sentiment})_\n"
+        else:
+            md_output += f"👤 **{speaker}**\n"
+
+        md_output += f"> {content.strip()}\n\n"
+    
+    return md_output
 

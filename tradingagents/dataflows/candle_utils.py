@@ -4,14 +4,15 @@ import matplotlib.pyplot as plt
 
 import plotly.graph_objects as go
 import yfinance as yf
-from openai import OpenAI
-import base64
-from typing import Literal
 import alpha_vantage_utils
 
 def save_ticker_1y_candle(symbol:str, path: str=None, dpi=100):
+    '''Save ticker 1y candle with volume, PE to local png, so it can be used later to infer with LLM.
+
+    Limitation: PE computation maybe inaccurate, different from PE history from tradingview UI.
+    '''
     if path is None:
-        path = f'{symbol}_candle.png'
+        path = f'./imgs/{symbol}_candle.png'
     data = yf.download(symbol, period="1y", interval="1d", multi_level_index=False)
     data=alpha_vantage_utils.AlphaVantageClient().add_eps_column(data, 'META')
     data['pe'] = data['Close']/data['eps']
@@ -32,7 +33,7 @@ def save_ticker_1y_candle(symbol:str, path: str=None, dpi=100):
     # Optional: Improve layout
     fig.tight_layout()
     fig.savefig(path, dpi=dpi)
-    plt.show()
+    #plt.show()
 
 def interactive_candle(symbol:str):
     data = yf.download(symbol, period="1y", interval="1d", multi_level_index=False)
@@ -45,30 +46,3 @@ def interactive_candle(symbol:str):
         close=data['Close']
     )])
     return fig.update_layout(xaxis_rangeslider_visible=False)
-
-def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
-
-def call_openai_with_image_path(image_path:str, 
-                                model: Literal["gpt-4.1", "o4-mini"],
-                                query: str = "Is now the right time to buy the stock?"):
-    client = OpenAI()
-    # Getting the Base64 string
-    base64_image = encode_image(image_path)
-    response = client.responses.create(
-        model=model,
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    { "type": "input_text", "text": query },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{base64_image}",
-                    },
-                ],
-            }
-        ],
-    )
-    return response.output_text
