@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 import api_usage
 import json
+from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
@@ -56,21 +57,42 @@ def _earnings_to_markdown(earnings):
     return md_output
 
 class AlphaVantageClient():
-    def __init__(self):
+    def __init__(self, debug=False):
         # Get API key from environment
         self._usage_table_name = 'AlphaVantage'
         self._api_usage_client = api_usage.ApiUsageClient(self._usage_table_name, 25)
         self._api_keys = [os.getenv('ALPHA_VANTAGE_API_KEY'),
                     os.getenv('ALPHA_VANTAGE_API_KEY2')]
+        self._debug = debug
 
     def _query_rpc(self, url):
         '''Will append token to end of url and query.
         '''
-        return self._api_usage_client.query_rpc(url, self._api_keys)
+        return self._api_usage_client.query_rpc(url, self._api_keys, self._debug)
 
     def get_earnings_call(self, symbol:str, quarter='2025Q2'):
         url = f'https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={symbol}&quarter={quarter}'
         return self._query_rpc(url)
+    
+    def get_news(self, symbol:str, days_back=7, limit = 1000, prefilter = True):
+        formatted_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y%m%dT0000")
+        news = self._query_rpc(f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&time_from={formatted_date}&limit={limit}')
+        news_list = []
+        fields= ['title', 'url', 'time_published', 'summary', 
+                 'source', 'category_within_source', 'source_domain', 
+                 'overall_sentiment_score', 'overall_sentiment_label']
+        for feed in news['feed']:
+            for ts in feed['ticker_sentiment']:
+                if ts['ticker'] == symbol:
+                    data = [float(ts['ticker_sentiment_score']), float(ts['relevance_score'])]
+                    for f in fields:
+                        data.append(feed[f])
+                    news_list.append(data)
+        df_news = pd.DataFrame.from_records(news_list, columns=['ticker_sentiment_score', 'relevance_score']+fields)
+        if prefilter:
+            return df_news.query('relevance_score>0.5').query("source!='Motley Fool' and source != 'Benzinga' and source !='Zacks Commentary'" )
+        else:
+            return df_news
     
     def get_earnings(self, symbol:str):
         url = f'https://www.alphavantage.co/query?function=EARNINGS&symbol={symbol}'

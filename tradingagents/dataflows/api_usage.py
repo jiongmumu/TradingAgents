@@ -33,7 +33,7 @@ class ApiUsageClient():
             return json.loads(rows[0][0])
         return None
 
-    def query_rpc(self, url, api_keys):
+    def query_rpc(self, url, api_keys, debug=False):
         '''Will append token to end of url and query.
         '''
         response_cache = self.get_cache(url)
@@ -42,6 +42,8 @@ class ApiUsageClient():
         for api_key in api_keys:
             count = self.get_usage_count_today(api_key)
             if count < self._daily_limit:
+                if debug:
+                    print(f'{url}&apikey={api_key}')
                 response_json = requests.get(f'{url}&apikey={api_key}').json()
                 self.log_usage(api_key, url, json.dumps(response_json))
                 return response_json
