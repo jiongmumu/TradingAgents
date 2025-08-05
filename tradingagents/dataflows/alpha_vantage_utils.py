@@ -77,7 +77,7 @@ class AlphaVantageClient():
         url = f'https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={symbol}&quarter={quarter}'
         return self._query_rpc(url)
     
-    def get_earnings_calendar(self, symbol:str|None, horizon_month: Literal[3,6,12] = 12):
+    def get_earnings_calendar(self, symbol:str|None = None, horizon_month: Literal[3,6,12] = 12):
         '''For this call, it will download a csv, and for some symbols, like NBIS, it doesn't have earnings calendar.
         '''
         symbol_filter = ''

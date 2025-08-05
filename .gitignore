@@ -11,3 +11,4 @@ eval_data/
 output.txt
 *.db-journal
 *.pdf
+*.db
