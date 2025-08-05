@@ -3,6 +3,7 @@ from datetime import datetime, date
 import requests
 import pandas as pd
 import json
+from io import StringIO
 
 conn = sqlite3.connect("api_usage.db")
 cursor = conn.cursor()
@@ -33,7 +34,7 @@ class ApiUsageClient():
             return json.loads(rows[0][0])
         return None
 
-    def query_rpc(self, url, api_keys, debug=False):
+    def query_rpc(self, url, api_keys, result_is_csv = False, debug=False):
         '''Will append token to end of url and query.
         '''
         response_cache = self.get_cache(url)
@@ -42,11 +43,20 @@ class ApiUsageClient():
         for api_key in api_keys:
             count = self.get_usage_count_today(api_key)
             if count < self._daily_limit:
+                url_with_key= f'{url}&apikey={api_key}'
                 if debug:
-                    print(f'{url}&apikey={api_key}')
-                response_json = requests.get(f'{url}&apikey={api_key}').json()
-                self.log_usage(api_key, url, json.dumps(response_json))
-                return response_json
+                    print(url_with_key)
+                if result_is_csv:
+                    with requests.Session() as s:
+                        download = s.get(url_with_key)
+                        decoded_content = download.content.decode('utf-8')
+                        self.log_usage(api_key, url, decoded_content)
+                        # Use pandas to read the CSV data from the decoded string
+                        return pd.read_csv(StringIO(decoded_content))
+                else:
+                    response_json = requests.get(f'{url}&apikey={api_key}').json()
+                    self.log_usage(api_key, url, json.dumps(response_json))
+                    return response_json
         raise Exception("All API keys exceeded daily limit")
     
     def get_usage_count_today(self, api_key: str):
@@ -60,12 +70,3 @@ class ApiUsageClient():
     def log_usage(self, api_key: str, url: str, response: str):
         cursor.execute(f"INSERT INTO {self._table_name} (api_key, url, response) VALUES (?,?, ?)", (api_key,url,response))
         conn.commit()
-
-    # def get_available_api_key(data):
-    #     for api_key in API_KEYS:
-    #         count = get_usage_count_today(api_key)
-    #         if count < DAILY_LIMIT:
-    #             log_usage(api_key)
-    #             response = requests.post("https://your.rpc.endpoint", headers={"Authorization": api_key}, json=data)
-    #             return response.json()
-    #     raise Exception("All API keys exceeded daily limit")

@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 import api_usage
 import json
+from typing import Literal
 from datetime import datetime, timedelta
 
 # Load environment variables from .env file
@@ -65,30 +66,70 @@ class AlphaVantageClient():
                     os.getenv('ALPHA_VANTAGE_API_KEY2')]
         self._debug = debug
 
-    def _query_rpc(self, url):
+    def _query_rpc(self, url, result_is_csv = False):
         '''Will append token to end of url and query.
         '''
-        return self._api_usage_client.query_rpc(url, self._api_keys, self._debug)
+        return self._api_usage_client.query_rpc(url, self._api_keys, debug= self._debug, result_is_csv = result_is_csv)
+    
 
     def get_earnings_call(self, symbol:str, quarter='2025Q2'):
+        # get earnings transcript
         url = f'https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={symbol}&quarter={quarter}'
         return self._query_rpc(url)
     
-    def get_news(self, symbol:str, days_back=7, limit = 1000, prefilter = True):
+    def get_earnings_calendar(self, symbol:str|None, horizon_month: Literal[3,6,12] = 12):
+        '''For this call, it will download a csv, and for some symbols, like NBIS, it doesn't have earnings calendar.
+        '''
+        symbol_filter = ''
+        if symbol:
+            symbol_filter = f'&symbol={symbol}'
+        url = f'https://www.alphavantage.co/query?function=EARNINGS_CALENDAR{symbol_filter}&horizon={horizon_month}month'
+        return self._query_rpc(url, result_is_csv=True)
+    
+    def get_news(self, symbols:list[str]|None=None,
+                 topics: list[str]|None = None,
+                 days_back=100, limit = 1000, prefilter = True):
+        '''It is quite limited.. it doesn't offer many news I can find else where.
+        If there are no news, even you specify tickers, it will return some random news, 
+         the related symbols don't even have the ticker you specify. 
+         But nice thing about it is it has summary to some sources I have no access,
+           but many of those sources are nosiy, like 'Motley Fool, 'Benzinga' and 'Zacks Commentary' , just people's random comment. 
+           Bloomberg api subscription almost 28K per year, so expensive, but that's mainly for institutional use, can't complain.
+        '''
+
         formatted_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y%m%dT0000")
-        news = self._query_rpc(f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers={symbol}&time_from={formatted_date}&limit={limit}')
+        symbol_filter = ''
+        if symbols:
+            symbol_filter=f'&symbol={','.join(symbols)}'
+        topic_filter = ''
+        if topics:
+            topic_filter = f'&topics={','.join(topics)}'
+        news = self._query_rpc(f'https://www.alphavantage.co/query?function=NEWS_SENTIMENT{symbol_filter}{topic_filter}&time_from={formatted_date}&limit={limit}')
         news_list = []
         fields= ['title', 'url', 'time_published', 'summary', 
                  'source', 'category_within_source', 'source_domain', 
                  'overall_sentiment_score', 'overall_sentiment_label']
         for feed in news['feed']:
+            max_ticker = ''
+            max_relevance_score = 0
+            ticker_sentiment_score = 0
             for ts in feed['ticker_sentiment']:
-                if ts['ticker'] == symbol:
-                    data = [float(ts['ticker_sentiment_score']), float(ts['relevance_score'])]
-                    for f in fields:
-                        data.append(feed[f])
-                    news_list.append(data)
-        df_news = pd.DataFrame.from_records(news_list, columns=['ticker_sentiment_score', 'relevance_score']+fields)
+                if float(ts['relevance_score']) > max_relevance_score:
+                    max_relevance_score = float(ts['relevance_score'])
+                    max_ticker = ts['ticker']
+                    ticker_sentiment_score = float(ts['ticker_sentiment_score'])
+            data = [max_ticker,ticker_sentiment_score,max_relevance_score]
+
+            # override if there is only one symbol. 
+            if symbols !=None and len(symbols) == 1:
+                for ts in feed['ticker_sentiment']:
+                    if ts['ticker'] == symbols[0]:
+                        data = [symbols[0], float(ts['ticker_sentiment_score']), float(ts['relevance_score'])]
+            for f in fields:
+                data.append(feed[f])
+            news_list.append(data)# symbols list empty or >1
+
+        df_news = pd.DataFrame.from_records(news_list, columns=['ticker', 'ticker_sentiment_score', 'relevance_score']+fields)
         if prefilter:
             return df_news.query('relevance_score>0.5').query("source!='Motley Fool' and source != 'Benzinga' and source !='Zacks Commentary'" )
         else:
